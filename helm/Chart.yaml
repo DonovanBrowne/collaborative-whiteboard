@@ -1,0 +1,4 @@
+apiVersion: v1
+description: POC Generic Helm Chart
+name: whiteboard
+version: 0.0.0.1
