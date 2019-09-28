@@ -1,0 +1,7 @@
+apiVersion: v1
+description: POC Generic Helm Chart
+name: whiteboard
+version: 0.0.1.0
+icon: https://github.com/mjschmidt/whiteboard-1/blob/master/public/img/hilogo.png
+sources:
+  - https://github.com/mjschmidt/whiteboard-1
