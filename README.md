@@ -27,7 +27,7 @@ You can run this app with and without docker
 1. `docker run -d -p 8080:8080 rofl256/whiteboard`
 2. Surf to http://YOURIP:8080
 
-### With helm
+### With Helm
 #### Locally
 1. `helm install --name whiteboard ./helm/whiteboard/ -f ./helm/whiteboard/values.yaml`
 
