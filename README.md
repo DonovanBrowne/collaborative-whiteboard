@@ -33,14 +33,17 @@ You can run this app with and without docker
 
 #### Push to an s3 bucket and add as a helm repo (such as minio)
 1. create a minio bucket
-2. package the helm chart `helm package ./helm/whiteboard`
+2. package the helm chart 
+    ```helm package ./helm/whiteboard```
 3. create an index file with the path to your helm repo included so that all charts get the base url
     ```
     helm repo index . --url https://location.of/bucket
     ```
 4. move all objects to storage bucket
-5. add your bucket with `helm repo add whiteboard https://location.of/bucket
-6. helm install from bucket with `helm install whiteboard/whiteboard --name whiteboard'
+5. add your bucket with 
+    ```helm repo add whiteboard https://location.of/bucket```
+6. helm install from bucket with 
+    ```helm install whiteboard/whiteboard --name whiteboard```
 
 ## API
 Call your site with GET parameters to change the WhiteboardID or the Username
