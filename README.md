@@ -39,7 +39,7 @@ You can run this app with and without docker
     ```
     helm repo index . --url https://location.of/bucket
     ```
-4. move all objects to storage bucket
+4. move packaged helm chart (ex whiteboard-0.0.1.tgz) and index.yaml file to s3 bucket
 5. add your bucket with 
     ```helm repo add whiteboard https://location.of/bucket```
 6. helm install from bucket with 
