@@ -80,7 +80,65 @@ var whiteboard = {
 				latestTouchCoods = [_this.prevX, _this.prevY];
 			}
 
-			if (_this.tool === "pen") {
+			if (_this.tool === "text") {
+				var currX = _this.prevX;
+				var currY = _this.prevY;
+				
+				var textInput = $('<div contenteditable="true" class="textInputDiv"></div>');
+				textInput.css({
+					position: "absolute",
+					left: currX + "px",
+					top: currY + "px",
+					minWidth: "10px",
+					minHeight: "20px",
+					padding: "5px",
+					border: "1px dashed " + _this.drawcolor,
+					color: _this.drawcolor,
+					background: "transparent",
+					cursor: "text",
+					whiteSpace: "nowrap",
+					zIndex: 1000,
+					fontSize: (_this.thickness * 3) + "px"
+				});
+				
+				_this.mouseOverlay.append(textInput);
+				textInput.focus();
+				
+				// Handle text input completion
+				textInput.on('blur', function() {
+					var text = $(this).text().trim();
+					if (text.length === 0) {
+						$(this).remove();
+						return;
+					}
+					
+					// Draw text to canvas
+					_this.ctx.font = (_this.thickness * 3) + "px Arial";
+					_this.ctx.fillStyle = _this.drawcolor;
+					_this.ctx.fillText(text, currX, currY + (_this.thickness * 3));
+					
+					// Remove the input div
+					$(this).remove();
+					
+					// Send the text data to other users
+					_this.sendFunction({
+						t: "text",
+						d: [text, currX, currY],
+						c: _this.drawcolor,
+						th: _this.thickness
+					});
+				});
+
+				// Handle enter key
+				textInput.on('keydown', function(e) {
+					if (e.keyCode === 13) {
+						e.preventDefault();
+						$(this).blur();
+					}
+				});
+				
+				return false; // Prevent other tools from activating
+			} else if (_this.tool === "pen") {
 				_this.drawPenLine(_this.prevX, _this.prevY, _this.prevX, _this.prevY, _this.drawcolor, _this.thickness);
 				_this.sendFunction({ "t": _this.tool, "d": [_this.prevX, _this.prevY, _this.prevX, _this.prevY], "c": _this.drawcolor, "th": _this.thickness });
 			} else if (_this.tool === "eraser") {
@@ -619,10 +677,14 @@ var whiteboard = {
 				}
 			} else if (tool === "undo") {
 				_this.undoWhiteboard(username);
+			} else if (tool === "text") {
+				_this.ctx.font = (thickness * 3) + "px Arial";
+				_this.ctx.fillStyle = color;
+				_this.ctx.fillText(data[0], data[1], data[2] + (thickness * 3));
 			}
 		});
 
-		if (isNewData && (tool === "line" || tool === "pen" || tool === "rect" || tool === "circle" || tool === "eraser" || tool === "addImgBG" || tool === "recSelect" || tool === "eraseRec")) {
+		if (isNewData && (tool === "line" || tool === "pen" || tool === "rect" || tool === "circle" || tool === "eraser" || tool === "addImgBG" || tool === "recSelect" || tool === "eraseRec" || tool === "text")) {
 			content["drawId"] = content["drawId"] ? content["drawId"] : _this.drawId;
 			content["username"] = content["username"] ? content["username"] : _this.settings.username;
 			_this.drawBuffer.push(content);
