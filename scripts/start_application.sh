@@ -20,11 +20,11 @@ if sudo pm2 list | grep -q "whiteboard"; then
     else
         echo "Whiteboard application exists but is not online. Restarting..."
         sudo pm2 delete whiteboard
-        sudo pm2 start server.js --name whiteboard --port 80
+        sudo pm2 start server.js --name whiteboard --env PORT=80
     fi
 else
     echo "Starting whiteboard application..."
-    sudo pm2 start server.js --name whiteboard --port 80
+    sudo pm2 start server.js --name whiteboard --env PORT=80
 fi
 
 exit 0

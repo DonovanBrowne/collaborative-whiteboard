@@ -1,4 +1,4 @@
-var PORT = 8080; //Set port for the app
+var PORT = 80; //Set port for the app
 
 fs = require("fs-extra");
 var express = require('express');
