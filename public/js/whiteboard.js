@@ -28,6 +28,7 @@ var whiteboard = {
 		canvasHeight: 2000,
 		backgroundGridUrl: './img/KtEBa2.png'
 	},
+	socket: null,
 	loadWhiteboard: function (whiteboardContainer, newSettings) {
 		var svgns = "http://www.w3.org/2000/svg";
 		var _this = this;
@@ -36,6 +37,46 @@ var whiteboard = {
 		}
 		this.settings["username"] = this.settings["username"].replace(/[^0-9a-z]/gi, '');
 		this.settings["whiteboardId"] = this.settings["whiteboardId"].replace(/[^0-9a-z]/gi, '');
+
+		// Initialize WebSocket connection
+		this.socket = io(window.location.origin, {
+			query: {
+				whiteboardId: this.settings.whiteboardId
+			}
+		});
+
+		// Handle real-time drawing updates from other users
+		this.socket.on('drawUpdate', (content) => {
+			if (content.username !== this.settings.username) {
+				this.handleEventsAndData(content, true);
+			}
+		});
+
+		// Request initial whiteboard state
+		this.socket.on('connect', () => {
+			this.socket.emit('loadWhiteboard');
+		});
+
+		// Handle initial whiteboard data
+		this.socket.on('initWhiteboard', (drawings) => {
+			this.canvas.height = this.canvas.height; // Clear canvas
+			this.imgContainer.empty();
+			this.loadData(drawings);
+		});
+
+		// Handle whiteboard clear events
+		this.socket.on('whiteboardCleared', () => {
+			this.canvas.height = this.canvas.height;
+			this.imgContainer.empty();
+			this.drawBuffer = [];
+			this.drawId = 0;
+		});
+
+		// Handle WebSocket errors
+		this.socket.on('error', (error) => {
+			console.error('WebSocket error:', error);
+			// You might want to show an error message to the user here
+		});
 
 		var startCoords = [];
 		var svgLine = null;
@@ -522,9 +563,9 @@ var whiteboard = {
 	},
 	clearWhiteboard: function () {
 		var _this = this;
+		_this.socket.emit('clearWhiteboard');
 		_this.canvas.height = _this.canvas.height;
 		_this.imgContainer.empty();
-		_this.sendFunction({ "t": "clear" });
 		_this.drawBuffer = [];
 		_this.drawId = 0;
 	},
@@ -764,17 +805,18 @@ var whiteboard = {
 			}
 		});
 	},
-	sendFunction: function (content) { //Sends every draw to server
+	sendFunction: function (content) {
 		var _this = this;
 		content["wid"] = _this.settings.whiteboardId;
 		content["username"] = _this.settings.username;
-		content["drawId"] = _this.drawId;
+		
+		// Emit drawing data through WebSocket
+		this.socket.emit('draw', content);
 
 		var tool = content["t"];
-		if (_this.settings.sendFunction) {
-			_this.settings.sendFunction(content);
-		}
-		if (tool === "line" || tool === "pen" || tool === "rect" || tool === "circle" || tool === "eraser" || tool === "addImgBG" || tool === "recSelect" || tool === "eraseRec") {
+		if (tool === "line" || tool === "pen" || tool === "rect" || tool === "circle" || 
+			tool === "eraser" || tool === "addImgBG" || tool === "recSelect" || tool === "eraseRec" || 
+			tool === "text") {
 			_this.drawBuffer.push(content);
 		}
 	},

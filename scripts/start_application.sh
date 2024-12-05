@@ -1,6 +1,8 @@
 #!/bin/bash
 
 cd /var/www/html || { echo "Error: Unable to navigate to /var/www/html"; exit 1; }
+npm install ioredis
+npm install
 
 # Ensure proper permissions
 sudo chown -R ec2-user:ec2-user /var/www/html
@@ -26,5 +28,7 @@ else
     echo "Starting whiteboard application..."
     sudo pm2 start server.js --name whiteboard --env PORT=80
 fi
+
+# Then start your application
 
 exit 0

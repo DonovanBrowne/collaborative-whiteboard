@@ -26,6 +26,7 @@ echo "Installing global dependencies..."
 sudo npm install -g typescript
 sudo npm install -g canvas  # For drawing capabilities
 sudo npm install -g socket.io  # For real-time collaboration
+sudo npm install -g ioredis
 
 # Fix permissions
 echo "Setting up permissions..."

@@ -3,7 +3,7 @@ var PORT = 80; //Set port for the app
 fs = require("fs-extra");
 var express = require('express');
 var formidable = require('formidable'); //form upload processing
-var s_whiteboard = require("./s_whiteboard.js");
+const handleWebSocket = require('./public/js/websocket-handler');
 
 var app = express();
 app.use(express.static(__dirname + '/public'));
@@ -11,6 +11,9 @@ var server = require('http').Server(app);
 server.listen(PORT);
 var io = require('socket.io')(server);
 console.log("Webserver & socketserver running on port:"+PORT);
+
+// Initialize WebSocket handling with Redis
+handleWebSocket(io);
 
 app.get('/loadwhiteboard', function(req, res) {
     var wid = req["query"]["wid"];

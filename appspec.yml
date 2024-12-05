@@ -16,6 +16,9 @@ hooks:
     - location: scripts/install_dependencies.sh
       timeout: 300
       runas: ec2-user
+    - location: scripts/setup_redis.sh
+      timeout: 300
+      runas: ec2-user
   ApplicationStart:
     - location: scripts/start_application.sh
       timeout: 300
