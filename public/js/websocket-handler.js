@@ -1,77 +1,107 @@
-const { redis, pub } = require('./redis-config');
+const AWS = require('aws-sdk');
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const path = require('path');
 
-const REDIS_CHANNEL = 'whiteboard-updates';
-const DRAWING_TTL = 0; // Set to 0 for no expiration - this is the key change!
+// Configure AWS SDK with the specified region
+AWS.config.update({ region: 'eu-west-2' });
 
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+const PORT = 80;
+
+// WebSocket handler module
 module.exports = function handleWebSocket(io) {
-  io.on('connection', async (socket) => {
-    const whiteboardId = socket.handshake.query.whiteboardId;
-    console.log(`Client connected to whiteboard: ${whiteboardId}`);
-    
-    socket.join(whiteboardId);
-    
-    // Create Redis subscriber with error handling
-    const redisSubscriber = redis.duplicate();
-    const channel = `${REDIS_CHANNEL}:${whiteboardId}`;
-    
-    try {
-      await redisSubscriber.subscribe(channel);
-      console.log(`Subscribed to channel: ${channel}`);
-    } catch (err) {
-      console.error('Redis subscription error:', err);
-      socket.emit('error', 'Failed to initialize whiteboard sync');
-      return;
-    }
-    
-    redisSubscriber.on('message', (channel, message) => {
-      try {
-        const data = JSON.parse(message);
-        socket.to(whiteboardId).emit('drawUpdate', data);
-      } catch (err) {
-        console.error('Error processing Redis message:', err);
-      }
-    });
+    const whiteboardId = 'myNewWhiteboard';
 
-    socket.on('draw', async (data) => {
-      try {
-        const drawingKey = `whiteboard:${whiteboardId}:drawings`;
-        
-        // Store the drawing permanently
-        await redis.rpush(drawingKey, JSON.stringify(data));
-        await pub.publish(channel, JSON.stringify(data));
-      } catch (err) {
-        console.error('Error handling draw event:', err);
-        socket.emit('error', 'Failed to save drawing');
-      }
-    });
+    // Function to load drawings from DynamoDB
+    const loadWhiteboardFromDynamo = async () => {
+        const params = {
+            TableName: 'Whiteboards',
+            KeyConditionExpression: 'whiteboardId = :whiteboardId',
+            ExpressionAttributeValues: {
+                ':whiteboardId': whiteboardId
+            }
+        };
+        console.log('Reading from DynamoDB with params:', params);
+        try {
+            const result = await dynamoDB.query(params).promise();
+            console.log('Read result:', result);
+            if (result.Items) {
+                return result.Items.map(item => ({
+                    t: item.tool,
+                    d: item.data,
+                    c: item.color,
+                    th: item.thickness,
+                    username: item.username,
+                    drawId: parseInt(item.drawId, 10),
+                    wid: item.whiteboardId
+                }));
+            }
+            return [];
+        } catch (error) {
+            console.error(`Error loading whiteboard from DynamoDB for whiteboardId: ${whiteboardId}`, error);
+            return [];
+        }
+    };
 
-    socket.on('loadWhiteboard', async () => {
-      try {
-        const drawingKey = `whiteboard:${whiteboardId}:drawings`;
-        const drawings = await redis.lrange(drawingKey, 0, -1);
-        socket.emit('initWhiteboard', drawings.map(d => JSON.parse(d)));
-      } catch (err) {
-        console.error('Error loading whiteboard:', err);
-        socket.emit('error', 'Failed to load whiteboard');
-      }
-    });
+    // Function to save a drawing to DynamoDB
+    const saveDrawingToDynamo = async (drawing) => {
+        // Ensure drawId is defined and convert it to a string
+        const drawId = drawing.drawId !== undefined ? drawing.drawId.toString() : '0'; // Default to '0' if undefined
 
-    socket.on('clearWhiteboard', async () => {
-      try {
-        const drawingKey = `whiteboard:${whiteboardId}:drawings`;
-        await redis.del(drawingKey);
-        io.to(whiteboardId).emit('whiteboardCleared');
-      } catch (err) {
-        console.error('Error clearing whiteboard:', err);
-        socket.emit('error', 'Failed to clear whiteboard');
-      }
-    });
+        const params = {
+            TableName: 'Whiteboards',
+            Item: {
+                whiteboardId: drawing.wid,
+                drawId: drawId,
+                tool: drawing.t,
+                data: drawing.d,
+                color: drawing.c,
+                thickness: drawing.th,
+                username: drawing.username,
+                timestamp: Date.now().toString()
+            }
+        };
+        console.log('Writing to DynamoDB:', params);
+        try {
+            await dynamoDB.put(params).promise();
+            console.log(`Successfully saved drawing for whiteboardId: ${drawing.wid}`);
+        } catch (error) {
+            console.error(`Error saving drawing to DynamoDB for whiteboardId: ${drawing.wid}`, error);
+        }
+    };
 
-    socket.on('disconnect', () => {
-      console.log(`Client disconnected from whiteboard: ${whiteboardId}`);
-      redisSubscriber.unsubscribe(channel)
-        .then(() => redisSubscriber.quit())
-        .catch(err => console.error('Error disconnecting Redis subscriber:', err));
+    io.on('connection', async (socket) => {
+        console.log(`Client connected to whiteboard: ${whiteboardId}`);
+        socket.join(whiteboardId);
+
+        // Load existing drawings from DynamoDB and send to the client
+        const drawings = await loadWhiteboardFromDynamo();
+        socket.emit('loadWhiteboard', drawings);
+
+        socket.on('draw', async (data) => {
+            try {
+                console.log('Received draw event:', data);
+                socket.to(whiteboardId).emit('drawUpdate', data);
+                await saveDrawingToDynamo(data); // Save each drawing immediately
+            } catch (err) {
+                console.error('Error handling draw event:', err);
+                socket.emit('error', 'Failed to save drawing');
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log(`Client disconnected from whiteboard: ${whiteboardId}`);
+        });
     });
-  });
 };
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});

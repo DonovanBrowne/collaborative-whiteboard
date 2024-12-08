@@ -1,9 +1,6 @@
 #!/bin/bash
 
 cd /var/www/html || { echo "Error: Unable to navigate to /var/www/html"; exit 1; }
-npm install ioredis
-npm install
-
 # Ensure proper permissions
 sudo chown -R ec2-user:ec2-user /var/www/html
 
@@ -30,5 +27,4 @@ else
 fi
 
 # Then start your application
-
 exit 0

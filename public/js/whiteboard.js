@@ -58,12 +58,9 @@ var whiteboard = {
 		});
 
 		// Handle initial whiteboard data
-		this.socket.on('initWhiteboard', (drawings) => {
-			this.canvas.height = this.canvas.height; // Clear canvas
-			this.imgContainer.empty();
-			this.loadData(drawings);
+		this.socket.on('loadWhiteboard', (drawings) => {
+			this.loadData(drawings); // Load and render drawings
 		});
-
 		// Handle whiteboard clear events
 		this.socket.on('whiteboardCleared', () => {
 			this.canvas.height = this.canvas.height;
@@ -776,6 +773,7 @@ var whiteboard = {
 			if (stepData["username"] == _this.settings.username && _this.drawId < stepData["drawId"]) {
 				_this.drawId = stepData["drawId"] + 1;
 			}
+			_this.drawBuffer.push(stepData); // Add each drawing action to the drawBuffer
 		});
 	},
 	loadDataInSteps(content, isNewData, callAfterEveryStep, doneCallback) {

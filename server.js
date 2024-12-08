@@ -1,122 +1,111 @@
-var PORT = 80; //Set port for the app
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const AWS = require('aws-sdk');
+const path = require('path');
 
-fs = require("fs-extra");
-var express = require('express');
-var formidable = require('formidable'); //form upload processing
-const handleWebSocket = require('./public/js/websocket-handler');
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
 
-var app = express();
-app.use(express.static(__dirname + '/public'));
-var server = require('http').Server(app);
-server.listen(PORT);
-var io = require('socket.io')(server);
-console.log("Webserver & socketserver running on port:"+PORT);
+const PORT = 80;
 
-// Initialize WebSocket handling with Redis
-handleWebSocket(io);
-
-app.get('/loadwhiteboard', function(req, res) {
-    var wid = req["query"]["wid"];
-    var ret = s_whiteboard.loadStoredData(wid);
-    res.send(ret);
-    res.end();
+// Configure AWS SDK
+AWS.config.update({
+    region: 'eu-west-2',
+    credentials: new AWS.EC2MetadataCredentials({
+        httpOptions: { timeout: 5000 },
+        maxRetries: 10
+    })
 });
 
-app.post('/upload', function(req, res) { //File upload
-    var form = new formidable.IncomingForm(); //Receive form
-    var formData = {
-        files : {},
-        fields : {}
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const whiteboardId = 'myNewWhiteboard';
+
+// Function to load drawings from DynamoDB
+const loadWhiteboardFromDynamo = async () => {
+    const params = {
+        TableName: 'Whiteboards',
+        KeyConditionExpression: 'whiteboardId = :whiteboardId',
+        ExpressionAttributeValues: {
+            ':whiteboardId': whiteboardId
+        }
+    };
+    console.log('Reading from DynamoDB with params:', params);
+    try {
+        const result = await dynamoDB.query(params).promise();
+        console.log('Read result:', result);
+        if (result.Items) {
+            return result.Items.map(item => ({
+                t: item.tool,
+                d: item.data,
+                c: item.color,
+                th: item.thickness,
+                username: item.username,
+                drawId: parseInt(item.drawId, 10),
+                wid: item.whiteboardId
+            }));
+        }
+        return [];
+    } catch (error) {
+        console.error(`Error loading whiteboard from DynamoDB for whiteboardId: ${whiteboardId}`, error);
+        return [];
     }
+};
 
-    form.on('file', function(name, file) {
-        formData["files"][file.name] = file;      
+// Function to save a drawing to DynamoDB
+const saveDrawingToDynamo = async (drawing) => {
+    // Ensure drawId is defined and convert it to a string
+    const drawId = drawing.drawId !== undefined ? drawing.drawId.toString() : '0'; // Default to '0' if undefined
+
+    const params = {
+        TableName: 'Whiteboards',
+        Item: {
+            whiteboardId: drawing.wid,
+            drawId: drawId,
+            tool: drawing.t,
+            data: drawing.d,
+            color: drawing.c,
+            thickness: drawing.th,
+            username: drawing.username,
+            timestamp: Date.now().toString()
+        }
+    };
+    console.log('Writing to DynamoDB:', params);
+    try {
+        await dynamoDB.put(params).promise();
+        console.log(`Successfully saved drawing for whiteboardId: ${drawing.wid}`);
+    } catch (error) {
+        console.error(`Error saving drawing to DynamoDB for whiteboardId: ${drawing.wid}`, error);
+    }
+};
+
+io.on('connection', async (socket) => {
+    console.log(`Client connected to whiteboard: ${whiteboardId}`);
+    socket.join(whiteboardId);
+
+    // Load existing drawings from DynamoDB and send to the client
+    const drawings = await loadWhiteboardFromDynamo();
+    socket.emit('loadWhiteboard', drawings);
+
+    socket.on('draw', async (data) => {
+        try {
+            console.log('Received draw event:', data);
+            socket.to(whiteboardId).emit('drawUpdate', data);
+            await saveDrawingToDynamo(data); // Save each drawing immediately
+        } catch (err) {
+            console.error('Error handling draw event:', err);
+            socket.emit('error', 'Failed to save drawing');
+        }
     });
 
-    form.on('field', function(name, value) {
-        formData["fields"][name] = value;
+    socket.on('disconnect', () => {
+        console.log(`Client disconnected from whiteboard: ${whiteboardId}`);
     });
-
-    form.on('error', function(err) {
-      console.log('File uplaod Error!');
-    });
-
-    form.on('end', function() {
-        progressUploadFormData(formData);
-        res.send("done");
-        //End file upload
-    });
-    form.parse(req);
 });
 
-function progressUploadFormData(formData) {
-    console.log("Progress new Form Data");
-    var fields = formData.fields;
-    var files = formData.files;
-    var whiteboardId = fields["whiteboardId"];
+app.use(express.static(path.join(__dirname, 'public')));
 
-    var name = fields["name"] || "";
-    var date = fields["date"] || (+new Date());
-    var filename = whiteboardId+"_"+date+".png";
-
-    fs.ensureDir("./public/uploads", function(err) {
-        var imagedata = fields["imagedata"];
-        if(imagedata && imagedata != "") { //Save from base64
-            imagedata = imagedata.replace(/^data:image\/png;base64,/, "").replace(/^data:image\/jpeg;base64,/, "");
-            console.log(filename, "uploaded");
-            fs.writeFile('./public/uploads/'+filename, imagedata, 'base64', function(err) {
-                if(err) {
-                    console.log("error", err);
-                }
-            });
-        }
-    });
-}
-
-var allUsers = {};
-io.on('connection', function(socket){
-
-    socket.on('disconnect', function () {
-        delete allUsers[socket.id];
-        socket.broadcast.emit('refreshUserBadges', null);
-    });
-
-    socket.on('drawToWhiteboard', function(content) {
-        content = escapeAllContentStrings(content);
-        sendToAllUsersOfWhiteboard(content["wid"], socket.id, content)
-        s_whiteboard.handleEventsAndData(content); //save whiteboardchanges on the server
-    });
-
-    socket.on('joinWhiteboard', function(wid) {
-        allUsers[socket.id] = {
-            "socket" : socket,
-            "wid" : wid
-        };
-    });
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
-
-function sendToAllUsersOfWhiteboard(wid, ownSocketId, content) {
-    for(var i in allUsers) {
-        if(allUsers[i]["wid"]===wid && allUsers[i]["socket"].id !== ownSocketId) {
-            allUsers[i]["socket"].emit('drawToWhiteboard', content);
-        }
-    }
-}
-
-//Prevent cross site scripting
-function escapeAllContentStrings(content, cnt) {
-    if(!cnt)
-        cnt = 0;
-
-    if(typeof(content)=="string") {
-        return content.replace(/<\/?[^>]+(>|$)/g, "");
-    }
-    for(var i in content) {
-        if(typeof(content[i])=="string") {
-            content[i] = content[i].replace(/<\/?[^>]+(>|$)/g, "");
-        } if(typeof(content[i])=="object" && cnt < 10) {
-            content[i] = escapeAllContentStrings(content[i], ++cnt);
-        }
-    }
-    return content;
-}
