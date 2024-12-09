@@ -88,10 +88,15 @@ io.on('connection', function(socket){
     });
 
     socket.on('joinWhiteboard', function(wid) {
+        if (!wid) {
+            console.log("Received undefined whiteboard ID");
+            return;
+        }
         allUsers[socket.id] = {
             "socket" : socket,
             "wid" : wid
         };
+        console.log(`Client connected to whiteboard: ${wid}`);
     });
 });
 
